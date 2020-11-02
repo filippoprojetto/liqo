@@ -28,6 +28,14 @@ func (c *MockController) ListMirroredObjects(api apiReflection.ApiType, namespac
 	return nil
 }
 
+func (c *MockController) ListMirroringObjects(api apiReflection.ApiType, namespace string) ([]interface{}, error) {
+	res := []interface{}{}
+	for _, v := range c.cache {
+		res = append(res, v)
+	}
+	return res, nil
+}
+
 func (c *MockController) AddMirroringObject(object interface{}, name string) {
 	if c.cache == nil {
 		c.cache = map[string]interface{}{}

@@ -42,6 +42,14 @@ func (p *KubernetesProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 	podTranslated := translation.H2FTranslate(pod, nattedNS)
+	remoteSecrets, err := p.apiController.ListMirroringObjects(apimgmgt.Secrets, podTranslated.Namespace)
+	if err != nil {
+		return err
+	}
+	podTranslated, err = translation.TranslateSA(podTranslated, pod, remoteSecrets)
+	if err != nil {
+		return err
+	}
 
 	_, err = p.foreignClient.Client().CoreV1().Pods(podTranslated.Namespace).Create(context.TODO(), podTranslated, metav1.CreateOptions{})
 	if err != nil {

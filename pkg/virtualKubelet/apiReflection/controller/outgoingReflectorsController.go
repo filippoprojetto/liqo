@@ -142,3 +142,7 @@ func (c *OutgoingReflectorsController) GetMirroringObject(api apimgmt.ApiType, n
 	apiReflector := c.apiReflectors[api].(ri.OutgoingAPIReflector)
 	return apiReflector.GetObjFromForeignCache(namespace, apiReflector.Keyer(namespace, name))
 }
+
+func (c *OutgoingReflectorsController) ListMirroringObjects(api apimgmt.ApiType, namespace string) ([]interface{}, error) {
+	return c.apiReflectors[api].(ri.OutgoingAPIReflector).ListObjFromForeignCache(namespace)
+}
