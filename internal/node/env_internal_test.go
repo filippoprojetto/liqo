@@ -19,7 +19,9 @@ import (
 	test2 "github.com/liqotech/liqo/pkg/virtualKubelet/apiReflection/controller/test"
 	"github.com/liqotech/liqo/pkg/virtualKubelet/namespacesMapping/test"
 	"k8s.io/kubernetes/pkg/kubelet/envvars"
+	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	gocmp "github.com/google/go-cmp/cmp"
@@ -121,6 +123,9 @@ var (
 // TestPopulatePodWithInitContainersUsingEnv populates the environment of a pod with four containers (two init containers, two containers) using ".env".
 // Then, it checks that the resulting environment for each container contains the expected environment variables.
 func TestPopulatePodWithInitContainersUsingEnv(t *testing.T) {
+	_ = os.Setenv("HOME_KUBERNETES_IP", "127.0.0.1")
+	_ = os.Setenv("HOME_KUBERNETES_PORT", "6443")
+
 	rm := testutil.FakeResourceManager(configMap1, configMap2, secret1, secret2)
 	er := testutil.FakeEventRecorder(defaultEventRecorderBufferSize)
 
@@ -967,6 +972,8 @@ func TestServiceEnvVar(t *testing.T) {
 	// unused svc to show it isn't populated within a different namespace.
 	service3 := testutil.FakeService(namespace2, "unused", "1.2.3.4", "TCP", 8084)
 
+	homeKubernetes := testutil.FakeService(metav1.NamespaceDefault, "kubernetes", "127.0.0.1", "TCP", 6443)
+
 	rm := testutil.FakeResourceManager(service1, service2, service3)
 	er := testutil.FakeEventRecorder(defaultEventRecorderBufferSize)
 
@@ -993,6 +1000,14 @@ func TestServiceEnvVar(t *testing.T) {
 	remoteSvc.Spec.ClusterIP = "4.3.2.1" // change clusterIP to remote service, this is the IP that we want in remote pod env vars
 	apiController.AddMirroringObject(remoteSvc, remoteSvc.Name)
 	envs := envvars.FromServices([]*corev1.Service{remoteSvc})
+	kenvs := []corev1.EnvVar{}
+	for _, v := range envvars.FromServices([]*corev1.Service{homeKubernetes}) {
+		if strings.Contains(v.Name, strings.Join([]string{"KUBERNETES_PORT", "6443"}, "_")) {
+			// this avoids that these labels will be recreated by remote kubelet
+			v.Name = strings.Replace(v.Name, "6443", "443", -1)
+		}
+		kenvs = append(kenvs, v)
+	}
 
 	testCases := []struct {
 		name               string          // the name of the test case
@@ -1002,16 +1017,16 @@ func TestServiceEnvVar(t *testing.T) {
 		{
 			name:               "ServiceLinks disabled",
 			enableServiceLinks: &bFalse,
-			expectedEnvs: []corev1.EnvVar{
+			expectedEnvs: append([]corev1.EnvVar{
 				{Name: envVarName1, Value: envVarValue1},
-			},
+			}, kenvs...),
 		},
 		{
 			name:               "ServiceLinks enabled",
 			enableServiceLinks: &bTrue,
 			expectedEnvs: append([]corev1.EnvVar{
 				{Name: envVarName1, Value: envVarValue1},
-			}, envs...),
+			}, append(envs, kenvs...)...),
 		},
 	}
 

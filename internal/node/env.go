@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"github.com/liqotech/liqo/internal/log"
 	"github.com/liqotech/liqo/pkg/virtualKubelet/apiReflection"
@@ -24,6 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/kubelet/envvars"
+	"k8s.io/utils/net"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -150,6 +153,21 @@ func getServiceEnvVarMap(rm *manager.ResourceManager, ns string, enableServiceLi
 		return nil, err
 	}
 
+	kubernetesIp, ok := os.LookupEnv("HOME_KUBERNETES_IP")
+	if !ok {
+		err = goerrors.New("HOME_KUBERNETES_IP env var not set")
+		return nil, err
+	}
+	kubernetesPort, ok := os.LookupEnv("HOME_KUBERNETES_PORT")
+	if !ok {
+		err = goerrors.New("HOME_KUBERNETES_PORT env var not set")
+		return nil, err
+	}
+	port, err := net.ParsePort(kubernetesPort, false)
+	if err != nil {
+		return nil, err
+	}
+
 	// project the services in namespace ns onto the master services
 	for i := range services {
 		// We always want to add environment variables for master kubernetes service
@@ -161,7 +179,13 @@ func getServiceEnvVarMap(rm *manager.ResourceManager, ns string, enableServiceLi
 		serviceName := service.Name
 
 		if service.Namespace == metav1.NamespaceDefault && masterServices.Has(serviceName) {
-			// TODO: we have to set env vars for our home kubernetes service
+			// kubernetes service is translated to our local API Server IP+Port
+			svc := service.DeepCopy()
+			svc.Spec.ClusterIP = kubernetesIp
+			if len(svc.Spec.Ports) > 0 {
+				svc.Spec.Ports[0].Port = int32(port)
+			}
+			serviceMap[svc.Name] = svc
 		} else if service.Namespace == ns && enableServiceLinks {
 			err = addService(&serviceMap, apiController, remoteNs, serviceName, true)
 		}
@@ -176,6 +200,10 @@ func getServiceEnvVarMap(rm *manager.ResourceManager, ns string, enableServiceLi
 	}
 
 	for _, e := range envvars.FromServices(mappedServices) {
+		if strings.Contains(e.Name, strings.Join([]string{"KUBERNETES_PORT", kubernetesPort}, "_")) {
+			// this avoids that these labels will be recreated by remote kubelet
+			e.Name = strings.Replace(e.Name, kubernetesPort, "443", -1)
+		}
 		m[e.Name] = e.Value
 	}
 	return m, nil
