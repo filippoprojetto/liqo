@@ -4,6 +4,7 @@ const (
 	Configmaps = iota
 	EndpointSlices
 	Pods
+	ReplicaControllers
 	Services
 	Secrets
 )

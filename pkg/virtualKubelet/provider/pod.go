@@ -7,6 +7,7 @@ import (
 	"github.com/liqotech/liqo/internal/utils/trace"
 	"github.com/liqotech/liqo/internal/virtualKubelet/node/api"
 	apimgmgt "github.com/liqotech/liqo/pkg/virtualKubelet/apiReflection"
+	"github.com/liqotech/liqo/pkg/virtualKubelet/factory"
 	"github.com/liqotech/liqo/pkg/virtualKubelet/translation"
 	"github.com/pkg/errors"
 	"io"
@@ -22,8 +23,7 @@ import (
 )
 
 // CreatePod accepts a Pod definition and stores it in memory.
-func (p *KubernetesProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
-	// Add the pod's coordinates to the current span.
+func (p *KubernetesProvider) CreatePod(_ context.Context, pod *v1.Pod) error {
 	if pod == nil {
 		return errors.New("pod cannot be nil")
 	}
@@ -31,8 +31,7 @@ func (p *KubernetesProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	klog.Infof("receive CreatePod %q", pod.Name)
 
 	if pod.OwnerReferences != nil && len(pod.OwnerReferences) != 0 && pod.OwnerReferences[0].Kind == "DaemonSet" {
-		msg := fmt.Sprintf("Skip to create DaemonSet pod %q", pod.Name)
-		klog.Info(msg)
+		klog.Infof("Skip to create DaemonSet pod %q", pod.Name)
 		return nil
 	}
 
@@ -42,23 +41,24 @@ func (p *KubernetesProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 	podTranslated := translation.H2FTranslate(pod, nattedNS)
+	rc := factory.ReplicaControllerFromPod(podTranslated)
 
-	_, err = p.foreignClient.Client().CoreV1().Pods(podTranslated.Namespace).Create(context.TODO(), podTranslated, metav1.CreateOptions{})
+	_, err = p.foreignClient.Client().CoreV1().ReplicationControllers(rc.Namespace).Create(context.TODO(), rc, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
-	klog.Infof("Pod %v/%v successfully created on remote cluster", podTranslated.Namespace, podTranslated.Name)
+	klog.Infof("Replicationcontroller %v/%v successfully created on remote cluster", rc.Namespace, rc.Name)
 
 	return nil
 }
 
 // UpdatePod accepts a Pod definition and updates its reference.
-func (p *KubernetesProvider) UpdatePod(ctx context.Context, pod *v1.Pod) error {
+func (p *KubernetesProvider) UpdatePod(_ context.Context, pod *v1.Pod) error {
 	return nil
 }
 
 // DeletePod deletes the specified pod out of memory.
-func (p *KubernetesProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
+func (p *KubernetesProvider) DeletePod(_ context.Context, pod *v1.Pod) (err error) {
 	klog.Infof("receive DeletePod %q", pod.Name)
 	opts := &metav1.DeleteOptions{}
 
@@ -96,7 +96,7 @@ func (p *KubernetesProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err er
 }
 
 // GetPod returns a pod by name that is stored in memory.
-func (p *KubernetesProvider) GetPod(ctx context.Context, namespace, name string) (pod *v1.Pod, err error) {
+func (p *KubernetesProvider) GetPod(_ context.Context, namespace, name string) (pod *v1.Pod, err error) {
 	klog.V(3).Infof("receive GetPod %q", name)
 
 	nattedNS, err := p.namespaceMapper.NatNamespace(namespace, false)
@@ -119,7 +119,7 @@ func (p *KubernetesProvider) GetPod(ctx context.Context, namespace, name string)
 
 // GetPodStatus returns the status of a pod by name that is "running".
 // returns nil if a pod by that name is not found.
-func (p *KubernetesProvider) GetPodStatus(ctx context.Context, namespace, name string) (*v1.PodStatus, error) {
+func (p *KubernetesProvider) GetPodStatus(_ context.Context, namespace, name string) (*v1.PodStatus, error) {
 	nattedNS, err := p.namespaceMapper.NatNamespace(namespace, false)
 
 	if err != nil {
@@ -138,7 +138,7 @@ func (p *KubernetesProvider) GetPodStatus(ctx context.Context, namespace, name s
 
 // RunInContainer executes a command in a container in the pod, copying data
 // between in/out/err and the container's stdin/stdout/stderr.
-func (p *KubernetesProvider) RunInContainer(ctx context.Context, namespace string, podName string, containerName string, cmd []string, attach api.AttachIO) error {
+func (p *KubernetesProvider) RunInContainer(_ context.Context, namespace string, podName string, containerName string, cmd []string, attach api.AttachIO) error {
 
 	nattedNS, err := p.namespaceMapper.NatNamespace(namespace, false)
 	if err != nil {
@@ -179,7 +179,7 @@ func (p *KubernetesProvider) RunInContainer(ctx context.Context, namespace strin
 }
 
 // GetContainerLogs retrieves the logs of a container by name from the provider.
-func (p *KubernetesProvider) GetContainerLogs(ctx context.Context, namespace string, podName string, containerName string, opts api.ContainerLogOpts) (io.ReadCloser, error) {
+func (p *KubernetesProvider) GetContainerLogs(_ context.Context, namespace string, podName string, containerName string, opts api.ContainerLogOpts) (io.ReadCloser, error) {
 	nattedNS, err := p.namespaceMapper.NatNamespace(namespace, false)
 	if err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func (p *KubernetesProvider) GetContainerLogs(ctx context.Context, namespace str
 }
 
 // GetPods returns a list of all pods known to be "running".
-func (p *KubernetesProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
+func (p *KubernetesProvider) GetPods(_ context.Context) ([]*v1.Pod, error) {
 	klog.Info("receive GetPods")
 
 	if p.foreignClient == nil {
@@ -307,7 +307,7 @@ func (p *KubernetesProvider) GetStatsSummary(ctx context.Context) (*stats.Summar
 
 // NotifyPods is called to set a pod informing callback function. This should be called before any operations are ready
 // within the provider.
-func (p *KubernetesProvider) NotifyPods(ctx context.Context, notifier func(interface{})) {
+func (p *KubernetesProvider) NotifyPods(_ context.Context, notifier func(interface{})) {
 	p.apiController.SetInformingFunc(apimgmgt.Pods, notifier)
 	p.notifier = notifier
 }
