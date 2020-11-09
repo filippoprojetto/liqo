@@ -20,9 +20,10 @@ type APIReflectorsController interface {
 type OutGoingAPIReflectorsController interface {
 	APIReflectorsController
 
-	GetMirroringObject(api apimgmt.ApiType, namespace, name string) (interface{}, error)
-
 	buildOutgoingReflector(api apimgmt.ApiType, opts map[options.OptionKey]options.Option) ri.OutgoingAPIReflector
+
+	GetMirroringObject(api apimgmt.ApiType, namespace, name string) (interface{}, error)
+	ListMirroringObjects(api apimgmt.ApiType, namespace string) ([]interface{}, error)
 }
 
 type IncomingAPIReflectorsController interface {

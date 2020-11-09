@@ -19,6 +19,7 @@ type ApiControllerCacheManager interface {
 	GetMirroredObjectByKey(api apiReflection.ApiType, namespace string, name string) interface{}
 	GetMirroringObjectByKey(api apiReflection.ApiType, namespace string, name string) (interface{}, error)
 	ListMirroredObjects(api apiReflection.ApiType, namespace string) []interface{}
+	ListMirroringObjects(api apiReflection.ApiType, namespace string) ([]interface{}, error)
 }
 
 type Controller struct {
@@ -113,6 +114,10 @@ func (c *Controller) GetMirroringObjectByKey(api apiReflection.ApiType, namespac
 
 func (c *Controller) ListMirroredObjects(api apiReflection.ApiType, namespace string) []interface{} {
 	return c.incomingReflectorsController.ListMirroredObjects(api, namespace)
+}
+
+func (c *Controller) ListMirroringObjects(api apiReflection.ApiType, namespace string) ([]interface{}, error) {
+	return c.outgoingReflectorsController.ListMirroringObjects(api, namespace)
 }
 
 func (c *Controller) StartController() {

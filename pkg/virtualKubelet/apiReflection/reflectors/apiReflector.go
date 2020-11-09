@@ -5,6 +5,7 @@ import (
 	ri "github.com/liqotech/liqo/pkg/virtualKubelet/apiReflection/reflectors/reflectorsInterfaces"
 	"github.com/liqotech/liqo/pkg/virtualKubelet/namespacesMapping"
 	"github.com/pkg/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -186,4 +187,13 @@ func (r *GenericAPIReflector) GetObjFromForeignCache(namespace, key string) (int
 	}
 
 	return obj, nil
+}
+
+func (r *GenericAPIReflector) ListObjFromForeignCache(namespace string) ([]interface{}, error) {
+	informer := r.ForeignInformer(namespace)
+	if informer == nil {
+		return nil, kerrors.NewServiceUnavailable("informer not yet instantiated")
+	}
+
+	return informer.GetStore().List(), nil
 }
