@@ -26,14 +26,14 @@ type APIReflector interface {
 
 	Inform(obj apimgmt.ApiEvent)
 	Keyer(namespace, name string) string
-	GetObjFromForeignCache(string, string) (interface{}, error)
-	LocalInformer(string) cache.SharedIndexInformer
-	ForeignInformer(string) cache.SharedIndexInformer
+
 	GetForeignClient() kubernetes.Interface
 	GetHomeClient() kubernetes.Interface
+	GetCacheManager() CacheManagerReader
 	NattingTable() namespacesMapping.NamespaceNatter
-	SetInformers(reflectionType ReflectionType, namespace, nattedNs string, homeInformer, foreignInformer cache.SharedIndexInformer)
+	SetupHandlers(api apimgmt.ApiType, reflectionType ReflectionType, namespace, nattedNs string)
 	SetPreProcessingHandlers(PreProcessingHandlers)
+
 	SetInforming(handler func(interface{}))
 	PushToInforming(interface{})
 }
@@ -53,9 +53,6 @@ type OutgoingAPIReflector interface {
 type IncomingAPIReflector interface {
 	APIReflector
 	SpecializedAPIReflector
-
-	GetMirroredObject(namespace, name string) interface{}
-	ListMirroredObjects(namespace string) []interface{}
 }
 
 type PreProcessingHandlers struct {
@@ -63,4 +60,28 @@ type PreProcessingHandlers struct {
 	AddFunc    func(obj interface{}) interface{}
 	UpdateFunc func(newObj, oldObj interface{}) interface{}
 	DeleteFunc func(obj interface{}) interface{}
+}
+
+type APICache map[apimgmt.ApiType]cache.SharedIndexInformer
+type NamespacedAPICaches map[string]APICache
+
+type CacheManagerAdder interface {
+	AddHomeApiCaches(namespace string, apiCache APICache)
+	AddForeignApiCaches(namespace string, apiCache APICache)
+	AddHomeEventHandlers(apimgmt.ApiType, string, *cache.ResourceEventHandlerFuncs)
+	AddForeignEventHandlers(apimgmt.ApiType, string, *cache.ResourceEventHandlerFuncs)
+}
+
+type CacheManagerReader interface {
+	GetHomeNamespacedObject(api apimgmt.ApiType, namespace, key string) (interface{}, error)
+	GetForeignNamespacedObject(api apimgmt.ApiType, namespace, key string) (interface{}, error)
+	ListHomeNamespacedObject(api apimgmt.ApiType, namespace string) []interface{}
+	ListForeignNamespacedObject(api apimgmt.ApiType, namespace string) []interface{}
+	ResyncListHomeNamespacedObject(api apimgmt.ApiType, namespace string) []interface{}
+	ResyncListForeignNamespacedObject(api apimgmt.ApiType, namespace string) []interface{}
+}
+
+type CacheManagerReaderAdder interface {
+	CacheManagerAdder
+	CacheManagerReader
 }

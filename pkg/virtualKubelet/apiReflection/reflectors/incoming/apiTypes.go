@@ -5,28 +5,40 @@ import (
 	ri "github.com/liqotech/liqo/pkg/virtualKubelet/apiReflection/reflectors/reflectorsInterfaces"
 	"github.com/liqotech/liqo/pkg/virtualKubelet/options"
 	"github.com/liqotech/liqo/pkg/virtualKubelet/options/types"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 )
 
-var ApiMapping = map[apimgmt.ApiType]func(reflector ri.APIReflector, opts map[options.OptionKey]options.Option) ri.IncomingAPIReflector{
-	apimgmt.Pods: func(reflector ri.APIReflector, opts map[options.OptionKey]options.Option) ri.IncomingAPIReflector {
-		return &PodsIncomingReflector{
-			APIReflector:          reflector,
-			RemoteRemappedPodCIDR: opts[types.RemoteRemappedPodCIDR]}
-	},
+var ReflectorBuilder = map[apimgmt.ApiType]func(reflector ri.APIReflector, opts map[options.OptionKey]options.Option) ri.IncomingAPIReflector{
+	apimgmt.Pods: podsReflectorBuilder,
 }
 
-var HomeInformerBuilders = map[apimgmt.ApiType]func(informers.SharedInformerFactory) cache.SharedIndexInformer{
-	apimgmt.Pods: func(factory informers.SharedInformerFactory) cache.SharedIndexInformer {
-		return factory.Core().V1().Pods().Informer()
-	},
+func podsReflectorBuilder(reflector ri.APIReflector, opts map[options.OptionKey]options.Option) ri.IncomingAPIReflector {
+	return &PodsIncomingReflector{
+		APIReflector:          reflector,
+		RemoteRemappedPodCIDR: opts[types.RemoteRemappedPodCIDR]}
 }
 
-var HomeIndexers = map[apimgmt.ApiType]func() cache.Indexers{
-	apimgmt.Pods: AddPodsIndexers,
+var InformerSelectors = map[apimgmt.ApiType]func(homeIn, foreignIn ri.APICache) (ri.APICache, ri.APICache){
+	apimgmt.Pods:               podsInformerSelector,
+	apimgmt.ReplicaControllers: replicationControllerInformerSelector,
 }
 
-var ForeignInformerBuilders = map[apimgmt.ApiType]func(informers.SharedInformerFactory) cache.SharedIndexInformer{}
+func podsInformerSelector(homeIn, foreignIn ri.APICache) (ri.APICache, ri.APICache) {
+	homeOut := make(map[apimgmt.ApiType]cache.SharedIndexInformer)
+	foreignOut := make(map[apimgmt.ApiType]cache.SharedIndexInformer)
 
-var ForeignIndexers = map[apimgmt.ApiType]func() cache.Indexers{}
+	homeOut[apimgmt.Pods] = homeIn[apimgmt.Pods]
+	foreignOut[apimgmt.Pods] = foreignIn[apimgmt.Pods]
+
+	return homeOut, foreignOut
+}
+
+func replicationControllerInformerSelector(homeIn, foreignIn ri.APICache) (ri.APICache, ri.APICache) {
+	homeOut := make(map[apimgmt.ApiType]cache.SharedIndexInformer)
+	foreignOut := make(map[apimgmt.ApiType]cache.SharedIndexInformer)
+
+	homeOut[apimgmt.ReplicaControllers] = homeIn[apimgmt.ReplicaControllers]
+	foreignOut[apimgmt.ReplicaControllers] = foreignIn[apimgmt.ReplicaControllers]
+
+	return homeOut, foreignOut
+}
